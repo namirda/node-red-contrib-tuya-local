@@ -6,7 +6,6 @@ module.exports = function(RED) {
 	function TuyaNode(config) {
 		RED.nodes.createNode(this,config);
 		var node = this;
-		var set_timeout = true
 		this.Name = config.devName;
 		this.Id = config.devId;
 		this.Key = config.devKey;
@@ -21,94 +20,341 @@ module.exports = function(RED) {
 			ip: this.Ip,
 			version: this.version});
 
-		function connectToDevice(timeout,req) {
-			device.find({'options': {'timeout':timeout}}).then( () => {
-				node.status({fill:"yellow",shape:"dot",text:"connecting"});
-				node.log(req);
-				device.connect().then( () => {
-				}, (reason) => { 
-					node.status({fill:"red",shape:"ring",text:"failed: " + reason});
-				});
-			});
+			// New variables sdded by Neil
+			var timer = null;
+			var set_timeout = true;         //Only set to false if the device has been disconnected deliberately - prevents autoreconnect
+			var connection_timeout=10;      // Timeout in seconds for find/connect to device
+			var retry_interval=10;          // Interval between connection retry attempts
+			var objRenameSchema={};         // config.renameSchema is a JSON string - this is the object version
+			var objInverseSchema={};        // This is the inverse schema
+			var doRename=false;             // Set to true if renamescheme is a valid JSON string
+
+			var nodeContext=this.context();
+
+			// Default command strings for on/off
+			// This is ugly but I don't know how else to do it!!
+
+			var cmdOff={};
+			var cc={};
+			cmdOff.multiple=true;
+			cc[config.defaultdps]=false;
+			cmdOff.data=cc;
+
+			var cmdOn={};
+			var cc1={};
+			cmdOn.multiple=true;
+			cc1[config.defaultdps]=true;
+			cmdOn.data=cc1;
+
+		function connectDevice() {
+			node.status({fill:"yellow",shape:"ring",text:"Searching for Device"});
+			node.log(config.devName + " - Finding device");
+
+	                // Try to find the device - we do this every time we connect because it might have changed ip
+	
+               		 device.find({'options': {'timeout':connection_timeout}}).then( () => {
+
+ 				node.status({fill:"yellow",shape:"dot",text:"Connecting"});
+				node.log(config.devName + " - Device found OK - Connecting");
+
+                                device.connect().then( () => {
+                                }, (reason) => {
+                                        node.status({fill:"red",shape:"ring",text:"Connect Failed: " + reason});
+					node.warn(config.devName + " - Failed to connect - " + reason + " - retrying");
+					timer_set();
+                                });
+
+
+                        },() => {
+                        
+			// find failed
+                                node.error(config.devName + " - Device not found - Retrying in " + retry_interval + " seconds");
+                                node.status({fill:"red",shape:"dot",text:"Device not found"});
+				timer_set();	// try again
+                        });
+		}
+		
+		function timer_clear(){
+			if(timer != null){
+				clearTimeout(timer);
+				timer=null;
+			}
 		}
 
-		function disconnectDevice(deleted) {
-			set_timeout = deleted ? false : true;
+		function timer_set(){
+			timer_clear();
+			timer=setTimeout(connectDevice, retry_interval*1000);
+		}
+
+		function disconnectDevice() {
 			device.disconnect();
 		}
-// 
+
+		// Here we retrieve the data from context and send it to the device
+
+		function sync2Context(){
+
+			// Get array of keys
+
+			var keys=nodeContext.keys();		// Get aray of keys
+
+
+			// And construct object
+
+			cc="{";
+			var c=0;
+			for ( key of keys){
+				c+=1;
+				var d=nodeContext.get(key);
+				if(isNaN(d))d='"' + d + '"';	// Non numeric values need quotes
+				cc+='"' + key + '":' +d; 
+				if(c<keys.length)cc+=",";	// No comma on the last item
+			}
+			cc+="}";
+			cc=JSON.parse(cc);
+
+			node.log(config.devName + " - Sync Context - " + JSON.stringify(cc));
+
+			// and sync
+
+			setDevice(cc);	
+		}
+
+
+		// Save command to context
+
+		function save2context(cmd){
+			node.log(config.devName + " - Save Context - " + JSON.stringify(cmd));
+			for (const key in cmd) {
+				nodeContext.set(key,cmd[key]);		
+			}
+		}
+
+		// Swaps keys and values in an object
+
+		function swapJSON(json){
+			var ret=Object.fromEntries(Object.entries(json).map(([k, v]) => [v, k]));
+  			return ret;
+		}
+//
+//		We try to be very command tolerant!!
+//		Income can be a boolean true/false or numeric 0/1 or string true/on/1 or false/off/0
+//		It can also be a json string with full details
+ 
 		function setDevice(req) {
-			if ( req == "request" ) {
-				device.get({"schema":true});
-			} else if ( req == "connect" ) {
-				// node.log('Connection requested by input');
-				connectToDevice(10,'Connection requested by input for device: ' + this.Name );
-			} else if ( req == "disconnect" ) {
-				node.log("Disconnection requested by input for device: " + this.Name)
-				device.disconnect();
-			} else if (req == "toggle") {
-				device.toggle();
-			} else if ( typeof req == "boolean" ) {
-				device.set({set: req}).then( () => {
-					node.status({fill:"green",shape:"dot",text: 'set success at:' + getHumanTimeStamp()});
-				}, (reason) => {
-					node.status({fill:"red",shape:"dot",text: 'set state failed:' + reason});
-				});
-			} else if ( "dps" in req ) {
-				console.log(req)
-				device.set(req);
-			} else if ( "multiple" in req) {
+
+			node.log(config.devName + " - received command " + JSON.stringify(req));
+
+			var req1=req;
+
+			if(typeof req=="string"){
+				if ( req.toLowerCase() == "request" ) {
+					device.get({"schema":true});
+
+				} else if ( req.toLowerCase() == "context" ) {
+		
+					sync2Context();
+
+				} else if ( req.toLowerCase() == "connect" ) {
+
+					if(!device.isConnected()){
+						timer_clear();			// Clear any outstanding timer
+						set_timout=true;		// Set auto connect
+						connectDevice();
+					}else{
+						node.log(config.devName + " - Already Connected");
+					}
+
+				} else if ( req.toLowerCase() == "disconnect" ) {
+					node.log(config.devName + " - Disconnecting");
+
+					if(device.isConnected()){
+						set_timeout=false;
+						timer_clear();
+						disconnectDevice();
+					}else{
+						node.log(config.devName + " - Already disconnected");
+					}
+
+				// toggle no longer works due to the renameschema
+
+				} else if (req.toLowerCase() == "toggle") {
+					node.log(config.devName + " - Toggle dps " + config.defaultdps);
+					device.toggle(config.defaultdps);
+
+				} else if (req.toLowerCase() == "on" || req.toLowerCase() == "true" || req.toLowerCase() =="1") {
+	                                node.log(config.devName + " - " + JSON.stringify(cmdOn));
+                                	device.set(cmdOn);
+
+				} else if (req.toLowerCase() == "off" || req.toLowerCase() == "false" || req.toLowerCase()=="0") {
+	                                node.log(config.devName + " - " + JSON.stringify(cmdOff));
+        	                        device.set(cmdOff);
+
+				// String can be valid JSON - convert to Object and process later
+
+				} else if (checkValidJSON(req)){
+                                	req1=JSON.parse(req);
+                                	node.log("Converting JSON string to object " + JSON.stringify(req1));
+
+
+				} else {
+					node.warn(config.devName + " - Unexpected input string " + req1);
+				}
+
+			} 
+
+			if (typeof req1=="boolean"){
+				if(req1==true){
+					node.log(config.devName + " - " + JSON.stringify(cmdOn));
+					device.set(cmdOn);
+				} else{
+					node.log(config.devName + " - " + JSON.stringify(cmdOff));
+					device.set(cmdOff);
+				}
+
+
+			// Allow numbers - 0 is false, everything else is true
+
+			} else if (typeof req1=="number"){
+				if (req==0){
+        	                        node.log(config.devName + " - " + JSON.stringify(cmdOff));
+	                                device.set(cmdOff);
+				} else {
+	                                node.log(config.devName + " - " + JSON.stringify(cmdOn));
+        	                        device.set(cmdOn);
+				}
+
+			} else if (typeof req1=="object"){
+
+//                      Convert input data according to schema if required
+
+                        	if(doRename){
+//	                                node.log("Converting Command According to Schema " + JSON.stringify(objRenameSchema));
+        	                        req1 = keyRename(req1,objRenameSchema);
+                        	}
+
+				node.log(config.devName + " - " + JSON.stringify(req1));
+
 				device.set({
 					multiple:true,
-					data: req.data
+					data: req1
 				});
 			}
 		}
 
+//************************************************************************************
+// START SCRIPT
 
-		connectToDevice(10,'Deploy connection request for device ' + this.Name);
+		// Check the renameSchema and get inverse
 
+		// This function accepts a JSON string or object
+		function isJSONValid(json){
+		
+			if (json==null){
+				 return false;
+			}
+
+			if (typeof json == "string"){
+				if (!checkValidJSON(json)){
+					node.warn(config.devName + " - Rename Schema is not valid JSON - will be ignored");
+					return false;
+				}
+
+				var json1=JSON.parse(json);
+			}
+
+			var keys=Object.keys(json1);
+			if(checkForDuplicates(keys)){
+				node.warn(config.devName + " - Rename Schema has duplicate keys - will be ignored");
+				return false;
+			}
+			var vals=Object.values(json1);
+			if(checkForDuplicates(vals)){
+				node.warn(config.devName + " - Rename Schema has duplicate values - will be ignored");
+				return false;
+			}
+			return true;
+		}
+
+		function checkForDuplicates(array) {
+  			return new Set(array).size !== array.length;
+		}
+
+		doRename=isJSONValid(config.renameSchema);		
+		
+		if(doRename){
+
+			// Parse the schema string and get inverse
+
+			objRenameSchema=JSON.parse(config.renameSchema);
+			objInverseSchema=swapJSON(objRenameSchema);
+
+			node.log(config.devName + " - Rename schema is " + JSON.stringify(objRenameSchema));
+//			node.log(config.devName + " - Inverse Schema is " + JSON.stringify(objInverseSchema));
+		}
+
+		// Initial Connection
+
+		node.log(config.devName + " - Connect on Deploy");
+		connectDevice();
 
 		device.on('disconnected', () => {
-			this.status({fill:"red",shape:"ring",text:"disconnected from device"});
+			if (set_timeout){
+				node.warn(config.devName + " - Unexpected Disconnect - Reconnecting in " + retry_interval + " seconds");
+			}else {
+				node.log(config.devName + " - Disconnected");
+			}
+
+			this.status({fill:"red",shape:"ring",text:"Disconnected at " + getHumanTimeStamp()});
+
+			// Send msg saying not available
+
 			dev_info.available = false
 			msg = {data:dev_info}
 			node.send(msg);
+
+			// And reconnect if required
+
 			if (set_timeout) {
-				timeout = setTimeout(connectToDevice, 10000, 10, 'set timeout for re-connect');
+				timer_set();
 			}
 		});
 
 
 		device.on('connected', () => {
-			this.status({fill:"green",shape:"dot",text: this.Ip + " at " + getHumanTimeStamp()});
-			try	{
-				clearTimeout(timeout)	
-			} catch(e) {
-				node.log("No timeout defined for " + this.Name + ", probably NodeRED starting")
-			}
+			this.status({fill:"green",shape:"dot",text: "Connected at " + getHumanTimeStamp()});
+			node.log(config.devName + " - Connected");
+			timer_clear();
 			
 		});
 
 		device.on('error', error => {
 			this.status({fill:"red",shape:"ring",text:"error: " + error});
 			node.warn(error + " device: " + this.Name);
-			if (error.toString().includes("Error from socket")){
-				try	{
-					node.log("error: Trying to clear a possible timeout timer for device " + this.Name )
-					clearTimeout(timeout)	
-				} catch(e) {
-					node.log("error: No timeout defined, device " + this.Name + " is probably not powered")
-				}
-			}
+	
+			// Disconnect and reconnect
+
+			if(device.isConnected())disconnectDevice();
+			timer_clear();
+			connectDevice();
 		});
+
+		device.on('heartbeat', () => {
+			node.log(config.devName + " - Heartbeat");
+		});
+
+//		The on data event is called after each data input - used to give some output
 
 		device.on('data', (data,commandByte) => {
 			if ("commandByte" !== null ) {
 				dev_info.available = true;
-				if (this.renameSchema !== undefined || this.renameSchema !== null) {
-					data.dps = checkValidJSON(this.renameSchema) ? keyRename(data.dps,JSON.parse(this.renameSchema)) : data.dps;
+
+				save2context(data.dps);
+
+				if (doRename) {
+					data.dps = keyRename(data.dps,objInverseSchema);
 				}
+
 				msg = {data:dev_info,commandByte:commandByte,payload:data};
 				if (this.filterCB !== "") {
 					node.send(filterCommandByte(msg,this.filterCB));
@@ -118,21 +364,20 @@ module.exports = function(RED) {
 			}
 		});
 
-		node.on('input', function(msg) {
+		//Handle input to the node
+
+		node.on('input', function(msg,send,done) {
 			setDevice(msg.payload);
 		});
 
 
 		this.on('close', function(removed, done) {
-			if (removed) {
-				  // This node has been deleted disconnect device and not set a timeout for reconnection
-				node.log("Node removal, gracefully disconnect device: " + this.Name);
-				device.isConnected() ? disconnectDevice(true) : node.log("Device " + this.Name + "not connected on removal");
-			} else {
-				// this node is being restarted, disconnect the device gracefully or connection will fail. Do not set a timeout
-				node.log("Node de-deploy, gracefully disconnect device: " + this.Name);
-				device.isConnected() ? disconnectDevice(true) : node.log("Device " + this.Name + "not connected on re-deploy");
-			}
+			node.log(config.devName + " - Closing");
+			set_timeout=false;
+			timer_clear();
+
+			if (device.isConnected() )disconnectDevice();
+
 			done();
 		});
 // 

@@ -7,7 +7,7 @@
   },
   "repository": {
   	"type": "git",
-  	"url": "https://github.com/subzero79/node-red-contrib-tuya-local.git"
+  	"url": "https://github.com/namirda/node-red-contrib-tuya-local.git"
   },
   "keywords": [
     "node-red",
@@ -22,6 +22,6 @@
         }
     },
   "dependencies": {
-    "tuyapi": "5.1.2"
+    "tuyapi": "7.0.0"
   }
 }
