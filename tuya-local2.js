@@ -124,7 +124,7 @@ module.exports = function(RED) {
 		// Save command to context
 
 		function save2context(cmd){
-			node.log(config.devName + " - Save Context - " + JSON.stringify(cmd));
+			node.log(config.devName + " - Save 2 Context - " + JSON.stringify(cmd));
 			for (const key in cmd) {
 				nodeContext.set(key,cmd[key]);		
 			}
@@ -349,10 +349,12 @@ module.exports = function(RED) {
 			if ("commandByte" !== null ) {
 				dev_info.available = true;
 
-				save2context(data.dps);
+				if (typeof data.dps != "undefined"){
+					save2context(data.dps);
 
-				if (doRename) {
-					data.dps = keyRename(data.dps,objInverseSchema);
+					if (doRename) {
+						data.dps = keyRename(data.dps,objInverseSchema);
+					}
 				}
 
 				msg = {data:dev_info,commandByte:commandByte,payload:data};
