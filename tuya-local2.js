@@ -98,7 +98,7 @@ module.exports = function(RED) {
 
 			var keys=nodeContext.keys();
 
-			if(key.length==0)return;
+			if(keys.length==0)return;
 
 			// And construct object
 
