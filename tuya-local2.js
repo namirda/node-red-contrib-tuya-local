@@ -22,7 +22,7 @@ module.exports = function(RED) {
 
 			// New variables sdded by Neil
 			var timer = null;
-			var set_timeout = true;         //Only set to false if the device has been disconnected deliberately - prevents autoreconnect
+			var set_timeout = true;         // Only set to false if the device has been disconnected deliberately - prevents autoreconnect
 			var connection_timeout=10;      // Timeout in seconds for find/connect to device
 			var retry_interval=10;          // Interval between connection retry attempts
 			var objRenameSchema={};         // config.renameSchema is a JSON string - this is the object version
