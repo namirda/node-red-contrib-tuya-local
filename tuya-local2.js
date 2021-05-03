@@ -96,8 +96,9 @@ module.exports = function(RED) {
 
 			// Get array of keys
 
-			var keys=nodeContext.keys();		// Get aray of keys
+			var keys=nodeContext.keys();
 
+			if(key.length==0)return;
 
 			// And construct object
 
@@ -325,6 +326,10 @@ module.exports = function(RED) {
 			this.status({fill:"green",shape:"dot",text: "Connected at " + getHumanTimeStamp()});
 			node.log(config.devName + " - Connected");
 			timer_clear();
+
+			// Now sync the context
+
+			sync2Context();
 			
 		});
 
@@ -348,6 +353,8 @@ module.exports = function(RED) {
 		device.on('data', (data,commandByte) => {
 			if ("commandByte" !== null ) {
 				dev_info.available = true;
+
+				// Save the data and swap the schema back if dps is present
 
 				if (typeof data.dps != "undefined"){
 					save2context(data.dps);
