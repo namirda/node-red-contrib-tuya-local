@@ -382,6 +382,6 @@ module.exports = function(RED) {
 		});
 // 
 	}
-	RED.nodes.registerType("tuya-local",TuyaNode);
+	RED.nodes.registerType("tuya-local2",TuyaNode);
 }
 
