@@ -187,11 +187,13 @@ module.exports = function(RED) {
 
 				} else if (req.toLowerCase() == "on" || req.toLowerCase() == "true" || req.toLowerCase() =="1") {
 	                                node.log(config.devName + " - " + JSON.stringify(cmdOn));
+									save2context(cmdOn.data);
                                 	device.set(cmdOn);
 
 				} else if (req.toLowerCase() == "off" || req.toLowerCase() == "false" || req.toLowerCase()=="0") {
 	                                node.log(config.devName + " - " + JSON.stringify(cmdOff));
-        	                        device.set(cmdOff);
+        	                        save2context(cmdOff.data);
+									device.set(cmdOff);
 
 				// String can be valid JSON - convert to Object and process later
 
@@ -209,9 +211,11 @@ module.exports = function(RED) {
 			if (typeof req1=="boolean"){
 				if(req1==true){
 					node.log(config.devName + " - " + JSON.stringify(cmdOn));
+					save2context(cmdOn.data);
 					device.set(cmdOn);
 				} else{
 					node.log(config.devName + " - " + JSON.stringify(cmdOff));
+					save2context(cmdOff.data);
 					device.set(cmdOff);
 				}
 
@@ -221,9 +225,11 @@ module.exports = function(RED) {
 			} else if (typeof req1=="number"){
 				if (req==0){
         	                        node.log(config.devName + " - " + JSON.stringify(cmdOff));
+									save2context(cmdOff.data);
 	                                device.set(cmdOff);
 				} else {
 	                                node.log(config.devName + " - " + JSON.stringify(cmdOn));
+									save2context(cmdOn.data);
         	                        device.set(cmdOn);
 				}
 
@@ -237,7 +243,7 @@ module.exports = function(RED) {
                         	}
 
 				node.log(config.devName + " - " + JSON.stringify(req1));
-
+				save2context(req1);
 				device.set({
 					multiple:true,
 					data: req1
@@ -357,11 +363,9 @@ module.exports = function(RED) {
 			if ("commandByte" !== null ) {
 				dev_info.available = true;
 
-				// Save the data and swap the schema back if dps is present
+				// Swap the schema back if dps is present
 
 				if (typeof data.dps != "undefined"){
-					save2context(data.dps);
-
 					if (doRename) {
 						data.dps = keyRename(data.dps,objInverseSchema);
 					}
