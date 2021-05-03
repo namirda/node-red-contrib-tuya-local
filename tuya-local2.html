@@ -1,5 +1,5 @@
 <script type="text/javascript">
-	RED.nodes.registerType("tuya-local", {
+	RED.nodes.registerType("tuya-local2", {
 		category: "input",
 		defaults: {
 			devName :		{ value: "", required: true},
@@ -16,7 +16,7 @@
 		icon: "tuya1.png",
 		color: "#ff6800",
 		label: function() {
-			return this.devName || this.devIp || "tuya-local";
+			return this.devName || this.devIp || "tuya-local2";
 		}
 	});
 </script>
@@ -56,7 +56,7 @@
 	</div>
 </script>
 
-<script type="text/x-red" data-help-name="tuya-local">
+<script type="text/x-red" data-help-name="tuya-local2">
 	<p>Connects to a Tuya device via active tcp socket using tuyapi library. 
 	Can receive commands to control and send status update in real time</p>
 	<h3>Config</h3>
