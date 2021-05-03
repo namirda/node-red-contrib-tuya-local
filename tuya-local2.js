@@ -22,7 +22,7 @@ module.exports = function(RED) {
 
 			// New variables sdded by Neil
 			var timer = null;
-			var set_timeout = true;         // Only set to false if the device has been disconnected deliberately - prevents autoreconnect
+			var doReconnect = true;         //Only set to false if the device has been disconnected deliberately - prevents autoreconnect
 			var connection_timeout=10;      // Timeout in seconds for find/connect to device
 			var retry_interval=10;          // Interval between connection retry attempts
 			var objRenameSchema={};         // config.renameSchema is a JSON string - this is the object version
@@ -31,20 +31,28 @@ module.exports = function(RED) {
 
 			var nodeContext=this.context();
 
-			// Default command strings for on/off
-			// This is ugly but I don't know how else to do it!!
-
-			var cmdOff={};
-			var cc={};
-			cmdOff.multiple=true;
-			cc[config.defaultdps]=false;
-			cmdOff.data=cc;
-
+		function turnOn(){
 			var cmdOn={};
-			var cc1={};
+			var cc={};
 			cmdOn.multiple=true;
-			cc1[config.defaultdps]=true;
-			cmdOn.data=cc1;
+			cc[config.defaultdps]=true;
+			cmdOn.data=cc;
+			node.log(config.devName + " - On - " + JSON.stringify(cmdOn));
+			save2context(cmdOn.data);
+			device.set(cmdOn);
+		}
+
+               function turnOff(){
+                        var cmdOff={};
+                        var cc={};
+                        cmdOff.multiple=true;
+                        cc[config.defaultdps]=false;
+                        cmdOff.data=cc;
+			node.log(config.devName + " - Off - " + JSON.stringify(cmdOff));
+			save2context(cmdOff.data);
+                        device.set(cmdOff);
+                }
+
 
 		function connectDevice() {
 			node.status({fill:"yellow",shape:"ring",text:"Searching for Device"});
@@ -116,11 +124,13 @@ module.exports = function(RED) {
 			cc+="}";
 			cc=JSON.parse(cc);
 
+			cc={multiple:true,data:cc};
+
 			node.log(config.devName + " - Sync Context - " + JSON.stringify(cc));
 
 			// and sync
 
-			setDevice(cc);	
+                        device.set(cc);	
 		}
 
 
@@ -160,24 +170,15 @@ module.exports = function(RED) {
 
 				} else if ( req.toLowerCase() == "connect" ) {
 
-					if(!device.isConnected()){
-						timer_clear();			// Clear any outstanding timer
-						set_timout=true;		// Set auto connect
-						connectDevice();
-					}else{
-						node.log(config.devName + " - Already Connected");
-					}
+					timer_clear();			// Clear any outstanding timer
+					doReconnect=true;		// Set auto connect
+					connectDevice();
 
 				} else if ( req.toLowerCase() == "disconnect" ) {
 					node.log(config.devName + " - Disconnecting");
-
-					if(device.isConnected()){
-						set_timeout=false;
-						timer_clear();
-						disconnectDevice();
-					}else{
-						node.log(config.devName + " - Already disconnected");
-					}
+					doReconnect=false;
+					timer_clear();
+					disconnectDevice();
 
 				// toggle no longer works due to the renameschema
 
@@ -186,14 +187,10 @@ module.exports = function(RED) {
 					device.toggle(config.defaultdps);
 
 				} else if (req.toLowerCase() == "on" || req.toLowerCase() == "true" || req.toLowerCase() =="1") {
-	                                node.log(config.devName + " - " + JSON.stringify(cmdOn));
-									save2context(cmdOn.data);
-                                	device.set(cmdOn);
+	                                turnOn();
 
 				} else if (req.toLowerCase() == "off" || req.toLowerCase() == "false" || req.toLowerCase()=="0") {
-	                                node.log(config.devName + " - " + JSON.stringify(cmdOff));
-        	                        save2context(cmdOff.data);
-									device.set(cmdOff);
+	                                turnOff();
 
 				// String can be valid JSON - convert to Object and process later
 
@@ -209,29 +206,15 @@ module.exports = function(RED) {
 			} 
 
 			if (typeof req1=="boolean"){
-				if(req1==true){
-					node.log(config.devName + " - " + JSON.stringify(cmdOn));
-					save2context(cmdOn.data);
-					device.set(cmdOn);
-				} else{
-					node.log(config.devName + " - " + JSON.stringify(cmdOff));
-					save2context(cmdOff.data);
-					device.set(cmdOff);
-				}
+				if(req1==true)turnOn();
+				else turnOff();
 
 
 			// Allow numbers - 0 is false, everything else is true
 
 			} else if (typeof req1=="number"){
-				if (req==0){
-        	                        node.log(config.devName + " - " + JSON.stringify(cmdOff));
-									save2context(cmdOff.data);
-	                                device.set(cmdOff);
-				} else {
-	                                node.log(config.devName + " - " + JSON.stringify(cmdOn));
-									save2context(cmdOn.data);
-        	                        device.set(cmdOn);
-				}
+				if (req==0)turnOff();
+				else turnOn(); 
 
 			} else if (typeof req1=="object"){
 
@@ -308,8 +291,10 @@ module.exports = function(RED) {
 		connectDevice();
 
 		device.on('disconnected', () => {
-			node.log(config.devName + " - set_timeout is " + set_timeout);
-			if (set_timeout){
+
+			// Give warning if this disconnect was unexpected
+
+			if (doReconnect){
 				node.warn(config.devName + " - Unexpected Disconnect - Reconnecting in " + retry_interval + " seconds");
 			}else {
 				node.log(config.devName + " - Disconnected");
@@ -325,9 +310,8 @@ module.exports = function(RED) {
 
 			// And reconnect if required
 
-			if (set_timeout) {
-				timer_set();
-			}
+			if (doReconnect)timer_set();
+			
 		});
 
 
@@ -390,7 +374,7 @@ module.exports = function(RED) {
 
 		this.on('close', function(removed, done) {
 			node.log(config.devName + " - Closing");
-			set_timeout=false;
+			doReconnect=false;
 			timer_clear();
 
 			if (device.isConnected() )disconnectDevice();
