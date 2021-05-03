@@ -98,8 +98,10 @@ module.exports = function(RED) {
 
 			var keys=nodeContext.keys();
 
-			if(keys.length==0)return;
-
+			if(keys.length==0){
+				node.log(config.devName + " - No keys to sync" );
+				return;
+			}
 			// And construct object
 
 			cc="{";
@@ -351,6 +353,7 @@ module.exports = function(RED) {
 //		The on data event is called after each data input - used to give some output
 
 		device.on('data', (data,commandByte) => {
+			node.log(config.devName + " - Data " + commandByte);
 			if ("commandByte" !== null ) {
 				dev_info.available = true;
 
