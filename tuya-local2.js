@@ -50,28 +50,28 @@ module.exports = function(RED) {
 			node.status({fill:"yellow",shape:"ring",text:"Searching for Device"});
 			node.log(config.devName + " - Finding device");
 
-	                // Try to find the device - we do this every time we connect because it might have changed ip
+	        // Try to find the device - we do this every time we connect because it might have changed ip
 	
-               		 device.find({'options': {'timeout':connection_timeout}}).then( () => {
+            device.find({'options': {'timeout':connection_timeout}}).then( () => {
 
  				node.status({fill:"yellow",shape:"dot",text:"Connecting"});
 				node.log(config.devName + " - Device found OK - Connecting");
 
-                                device.connect().then( () => {
-                                }, (reason) => {
-                                        node.status({fill:"red",shape:"ring",text:"Connect Failed: " + reason});
+                device.connect().then( () => {
+                }, (reason) => {
+                    node.status({fill:"red",shape:"ring",text:"Connect Failed: " + reason});
 					node.warn(config.devName + " - Failed to connect - " + reason + " - retrying");
 					timer_set();
-                                });
+                });
 
 
-                        },() => {
+            },() => {
                         
 			// find failed
-                                node.error(config.devName + " - Device not found - Retrying in " + retry_interval + " seconds");
-                                node.status({fill:"red",shape:"dot",text:"Device not found"});
+                node.error(config.devName + " - Device not found - Retrying in " + retry_interval + " seconds");
+                node.status({fill:"red",shape:"dot",text:"Device not found"});
 				timer_set();	// try again
-                        });
+            });
 		}
 		
 		function timer_clear(){
@@ -308,6 +308,7 @@ module.exports = function(RED) {
 		connectDevice();
 
 		device.on('disconnected', () => {
+			node.log(config.devName + " - set_timeout is " + set_timeout);
 			if (set_timeout){
 				node.warn(config.devName + " - Unexpected Disconnect - Reconnecting in " + retry_interval + " seconds");
 			}else {
@@ -353,7 +354,7 @@ module.exports = function(RED) {
 		});
 
 		device.on('heartbeat', () => {
-			node.log(config.devName + " - Heartbeat");
+			//node.log(config.devName + " - Heartbeat");
 		});
 
 //		The on data event is called after each data input - used to give some output
